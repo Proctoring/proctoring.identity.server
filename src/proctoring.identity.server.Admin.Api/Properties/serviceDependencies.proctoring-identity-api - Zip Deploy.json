@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "apis1": {
+      "resourceId": "/subscriptions/[parameters('subscriptionId')]/resourceGroups/[parameters('resourceGroupName')]/providers/Microsoft.ApiManagement/service/proctoring-identity-api/apis/proctoring-identity-api",
+      "type": "apis.azure"
+    }
+  }
+}
