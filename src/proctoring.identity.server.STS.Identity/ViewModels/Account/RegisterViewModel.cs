@@ -1,4 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Microsoft.AspNetCore.Mvc.Rendering;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace proctoring.identity.server.STS.Identity.ViewModels.Account
 {
@@ -12,6 +14,11 @@ namespace proctoring.identity.server.STS.Identity.ViewModels.Account
         public string Email { get; set; }
 
         [Required]
+        public string Role { get; set; }
+
+        public IEnumerable<SelectListItem> Roles { get; set; }
+
+        [Required]
         [DataType(DataType.Password)]
         public string Password { get; set; }
 
@@ -20,10 +27,3 @@ namespace proctoring.identity.server.STS.Identity.ViewModels.Account
         public string ConfirmPassword { get; set; }
     }
 }
-
-
-
-
-
-
-

@@ -16,8 +16,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
+using proctoring.identity.server.Admin.EntityFramework.Shared.Entities.Identity;
 using proctoring.identity.server.STS.Identity.Configuration;
 using proctoring.identity.server.STS.Identity.Helpers;
 using proctoring.identity.server.STS.Identity.Helpers.Localization;
@@ -34,43 +36,47 @@ namespace proctoring.identity.server.STS.Identity.Controllers
 {
     [SecurityHeaders]
     [Authorize]
-    public class AccountController<TUser, TKey> : Controller
-        where TUser : IdentityUser<TKey>, new()
+    public class AccountController<TUser, TRole, TKey> : Controller
+        where TUser : UserIdentity, new()
+        where TRole : UserIdentityRole, new()
         where TKey : IEquatable<TKey>
     {
         private readonly UserResolver<TUser> _userResolver;
         private readonly UserManager<TUser> _userManager;
+        private readonly RoleManager<TRole> _roleManager;
         private readonly ApplicationSignInManager<TUser> _signInManager;
         private readonly IIdentityServerInteractionService _interaction;
         private readonly IClientStore _clientStore;
         private readonly IAuthenticationSchemeProvider _schemeProvider;
         private readonly IEventService _events;
         private readonly IEmailSender _emailSender;
-        private readonly IGenericControllerLocalizer<AccountController<TUser, TKey>> _localizer;
+        private readonly IGenericControllerLocalizer<AccountController<TUser, TRole, TKey>> _localizer;
         private readonly LoginConfiguration _loginConfiguration;
         private readonly RegisterConfiguration _registerConfiguration;
         private readonly IdentityOptions _identityOptions;
-        private readonly ILogger<AccountController<TUser, TKey>> _logger;
+        private readonly ILogger<AccountController<TUser, TRole, TKey>> _logger;
         private readonly IIdentityProviderStore _identityProviderStore;
 
         public AccountController(
             UserResolver<TUser> userResolver,
             UserManager<TUser> userManager,
+            RoleManager<TRole> roleManager,
             ApplicationSignInManager<TUser> signInManager,
             IIdentityServerInteractionService interaction,
             IClientStore clientStore,
             IAuthenticationSchemeProvider schemeProvider,
             IEventService events,
             IEmailSender emailSender,
-            IGenericControllerLocalizer<AccountController<TUser, TKey>> localizer,
+            IGenericControllerLocalizer<AccountController<TUser, TRole, TKey>> localizer,
             LoginConfiguration loginConfiguration,
             RegisterConfiguration registerConfiguration,
             IdentityOptions identityOptions,
-            ILogger<AccountController<TUser, TKey>> logger,
+            ILogger<AccountController<TUser, TRole, TKey>> logger,
             IIdentityProviderStore identityProviderStore)
         {
             _userResolver = userResolver;
             _userManager = userManager;
+            _roleManager = roleManager;
             _signInManager = signInManager;
             _interaction = interaction;
             _clientStore = clientStore;
@@ -593,11 +599,18 @@ namespace proctoring.identity.server.STS.Identity.Controllers
             if (!_registerConfiguration.Enabled) return View("RegisterFailure");
 
             ViewData["ReturnUrl"] = returnUrl;
-
+            var model = new RegisterViewModel
+            {
+                Roles = _roleManager.Roles.Select(role => new SelectListItem
+                {
+                    Text = role.Name,
+                    Value = role.Name
+                })
+            };
             return _loginConfiguration.ResolutionPolicy switch
             {
-                LoginResolutionPolicy.Username => View(),
-                LoginResolutionPolicy.Email => View("RegisterWithoutUsername"),
+                LoginResolutionPolicy.Username => View(model),
+                LoginResolutionPolicy.Email => View("RegisterWithoutUsername", model),
                 _ => View("RegisterFailure")
             };
         }
@@ -606,14 +619,23 @@ namespace proctoring.identity.server.STS.Identity.Controllers
         [AllowAnonymous]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Register(RegisterViewModel model, string returnUrl = null, bool IsCalledFromRegisterWithoutUsername = false)
-        {
+        {           
             if (!_registerConfiguration.Enabled) return View("RegisterFailure");
 
             returnUrl ??= Url.Content("~/");
 
             ViewData["ReturnUrl"] = returnUrl;
-
-            if (!ModelState.IsValid) return View(model);
+            
+            model.Roles = _roleManager.Roles.Select(role => new SelectListItem
+            {
+                Text = role.Name,
+                Value = role.Name
+            });
+            
+            if (!ModelState.IsValid)
+            {               
+                return View(model);
+            }
 
             var user = new TUser
             {
@@ -624,21 +646,27 @@ namespace proctoring.identity.server.STS.Identity.Controllers
             var result = await _userManager.CreateAsync(user, model.Password);
             if (result.Succeeded)
             {
-                var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-                code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-                var callbackUrl = Url.Action("ConfirmEmail", "Account", new { userId = user.Id, code }, HttpContext.Request.Scheme);
+                var roleAddResult = await _userManager.AddToRoleAsync(user, model.Role);
 
-                await _emailSender.SendEmailAsync(model.Email, _localizer["ConfirmEmailTitle"], _localizer["ConfirmEmailBody", HtmlEncoder.Default.Encode(callbackUrl)]);
+                if (roleAddResult.Succeeded)
+                {
+                    var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                    code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+                    var callbackUrl = Url.Action("ConfirmEmail", "Account", new { userId = user.Id, code }, HttpContext.Request.Scheme);
 
-                if (_identityOptions.SignIn.RequireConfirmedAccount)
-                {
-                    return View("RegisterConfirmation");
+                    await _emailSender.SendEmailAsync(model.Email, _localizer["ConfirmEmailTitle"], _localizer["ConfirmEmailBody", HtmlEncoder.Default.Encode(callbackUrl)]);
+
+                    if (_identityOptions.SignIn.RequireConfirmedAccount)
+                    {
+                        return View("RegisterConfirmation");
+                    }
+                    else
+                    {
+                        await _signInManager.SignInAsync(user, isPersistent: false);
+                        return LocalRedirect(returnUrl);
+                    }
                 }
-                else
-                {
-                    await _signInManager.SignInAsync(user, isPersistent: false);
-                    return LocalRedirect(returnUrl);
-                }
+
             }
 
             AddErrors(result);
@@ -650,7 +678,8 @@ namespace proctoring.identity.server.STS.Identity.Controllers
                 {
                     Email = model.Email,
                     Password = model.Password,
-                    ConfirmPassword = model.ConfirmPassword
+                    ConfirmPassword = model.ConfirmPassword,
+                    Roles = model.Roles
                 };
 
                 return View("RegisterWithoutUsername", registerWithoutUsernameModel);
@@ -671,7 +700,7 @@ namespace proctoring.identity.server.STS.Identity.Controllers
                 UserName = model.Email,
                 Email = model.Email,
                 Password = model.Password,
-                ConfirmPassword = model.ConfirmPassword
+                ConfirmPassword = model.ConfirmPassword,
             };
 
             return await Register(registerModel, returnUrl, true);
@@ -837,11 +866,3 @@ namespace proctoring.identity.server.STS.Identity.Controllers
         }
     }
 }
-
-
-
-
-
-
-
-

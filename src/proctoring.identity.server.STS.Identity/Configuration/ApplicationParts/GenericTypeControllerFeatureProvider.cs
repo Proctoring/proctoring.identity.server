@@ -12,13 +12,14 @@ using System.Reflection;
 
 namespace proctoring.identity.server.STS.Identity.Configuration.ApplicationParts
 {
-    public class GenericTypeControllerFeatureProvider<TUser, TKey> : IApplicationFeatureProvider<ControllerFeature>
+    public class GenericTypeControllerFeatureProvider<TUser, TRole, TKey> : IApplicationFeatureProvider<ControllerFeature>
         where TUser : IdentityUser<TKey>
+        where TRole : IdentityRole<TKey>
         where TKey : IEquatable<TKey>
     {
         public void PopulateFeature(IEnumerable<ApplicationPart> parts, ControllerFeature feature)
         {
-            var currentAssembly = typeof(GenericTypeControllerFeatureProvider<TUser, TKey>).Assembly;
+            var currentAssembly = typeof(GenericTypeControllerFeatureProvider<TUser, TRole, TKey>).Assembly;
             var controllerTypes = currentAssembly.GetExportedTypes()
                                                  .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && t.IsGenericTypeDefinition)
                                                  .Select(t => t.GetTypeInfo());

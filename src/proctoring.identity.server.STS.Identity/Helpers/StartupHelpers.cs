@@ -45,8 +45,9 @@ namespace proctoring.identity.server.STS.Identity.Helpers
         /// Register services for MVC and localization including available languages
         /// </summary>
         /// <param name="services"></param>
-        public static IMvcBuilder AddMvcWithLocalization<TUser, TKey>(this IServiceCollection services, IConfiguration configuration)
+        public static IMvcBuilder AddMvcWithLocalization<TUser,TRole, TKey>(this IServiceCollection services, IConfiguration configuration)
             where TUser : IdentityUser<TKey>
+            where TRole : IdentityRole<TKey>
             where TKey : IEquatable<TKey>
         {
             services.AddLocalization(opts => { opts.ResourcesPath = ConfigurationConsts.ResourcesPath; });
@@ -63,7 +64,7 @@ namespace proctoring.identity.server.STS.Identity.Helpers
                 .AddDataAnnotationsLocalization()
                 .ConfigureApplicationPartManager(m =>
                 {
-                    m.FeatureProviders.Add(new GenericTypeControllerFeatureProvider<TUser, TKey>());
+                    m.FeatureProviders.Add(new GenericTypeControllerFeatureProvider<TUser, TRole, TKey>());
                 });
 
             var cultureConfiguration = configuration.GetSection(nameof(CultureConfiguration)).Get<CultureConfiguration>();
